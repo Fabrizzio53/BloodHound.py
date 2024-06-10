@@ -63,6 +63,7 @@ class BloodHound(object):
         self.pdc = ADDC(pdc, self.ad)
         # Create an object resolver
         self.ad.create_objectresolver(self.pdc)
+#        self.pdc.ldap_connect(self.ad.auth.username, self.ad.auth.password, kdc)
 
 
     def run(self, collect, num_workers=10, disable_pooling=False, timestamp="", computerfile="", cachefile=None, exclude_dcs=False, fileNamePrefix=""):
@@ -178,6 +179,9 @@ def main():
                         action='store',
                         default='',
                         help='Domain to query.')
+    parser.add_argument('-user-domain',
+                        action='store',
+                        help='User domain, good when you have trust, for example domain child.test.local but your use is from test.local')
     parser.add_argument('-v',
                         action='store_true',
                         help='Enable verbose output')
@@ -257,9 +261,6 @@ def main():
     coopts.add_argument('--cachefile',
                         action='store',
                         help='Cache file (experimental)')
-    coopts.add_argument('--use-ldaps',
-                        action='store_true',
-                        help='Use LDAP over TLS on port 636 by default')
     coopts.add_argument('-op',
                         '--outputprefix',
                         metavar='PREFIX_NAME',
@@ -273,30 +274,35 @@ def main():
     if args.v is True:
         logger.setLevel(logging.DEBUG)
 
+    domain_to_auth = args.domain
+
+    if args.user_domain is not None:
+        domain_to_auth = args.user_domain
+
     if args.username is not None and args.password is not None:
         logging.debug('Authentication: username/password')
-        auth = ADAuthentication(username=args.username, password=args.password, domain=args.domain, auth_method=args.auth_method)
+        auth = ADAuthentication(username=args.username, password=args.password, domain=domain_to_auth, auth_method=args.auth_method)
     elif args.username is not None and args.password is None and args.hashes is None and args.aesKey is None and args.no_pass is not None:
         args.password = getpass.getpass()
-        auth = ADAuthentication(username=args.username, password=args.password, domain=args.domain, auth_method=args.auth_method)
+        auth = ADAuthentication(username=args.username, password=args.password, domain=domain_to_auth, auth_method=args.auth_method)
     elif args.username is None and (args.password is not None or args.hashes is not None):
         logging.error('Authentication: password or hashes provided without username')
         sys.exit(1)
     elif args.hashes is not None and args.username is not None:
         logging.debug('Authentication: NT hash')
         lm, nt = args.hashes.split(":")
-        auth = ADAuthentication(lm_hash=lm, nt_hash=nt, username=args.username, domain=args.domain, auth_method=args.auth_method)
+        auth = ADAuthentication(lm_hash=lm, nt_hash=nt, username=args.username, domain=domain_to_auth, auth_method=args.auth_method)
     elif args.aesKey is not None and args.username is not None:
         logging.debug('Authentication: Kerberos AES')
-        auth = ADAuthentication(username=args.username, domain=args.domain, aeskey=args.aesKey, auth_method=args.auth_method)
+        auth = ADAuthentication(username=args.username, domain=domain_to_auth, aeskey=args.aesKey, auth_method=args.auth_method)
     else:
         if not args.kerberos:
             parser.print_help()
             sys.exit(1)
         else:
-            auth = ADAuthentication(username=args.username, password=args.password, domain=args.domain, auth_method=args.auth_method)
+            auth = ADAuthentication(username=args.username, password=args.password, domain=domain_to_auth, auth_method=args.auth_method)
 
-    ad = AD(auth=auth, domain=args.domain, nameserver=args.nameserver, dns_tcp=args.dns_tcp, dns_timeout=args.dns_timeout, use_ldaps=args.use_ldaps)
+    ad = AD(auth=auth, domain=args.domain, nameserver=args.nameserver, dns_tcp=args.dns_tcp, dns_timeout=args.dns_timeout)
 
     # Resolve collection methods
     collect = resolve_collection_methods(args.collectionmethod)
